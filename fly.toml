@@ -1,7 +1,7 @@
 # fly.toml app configuration file
 # See https://fly.io/docs/reference/configuration/ for information
 
-app = "sundance-ticket-monitor"
+app = "sundance-monitor-jimpyjack"
 primary_region = "ord"
 
 [build]
