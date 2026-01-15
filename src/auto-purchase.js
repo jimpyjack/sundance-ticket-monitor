@@ -32,7 +32,22 @@ function getPaymentConfig(settings = {}) {
 
 // Load auto-purchase configuration from file or environment variable
 export function loadAutoPurchaseConfig() {
-  // Try environment variable first (for Railway deployment)
+  // Try base64-encoded environment variable first (for cloud deployment)
+  if (process.env.AUTO_PURCHASE_JSON_BASE64) {
+    try {
+      const decoded = Buffer.from(process.env.AUTO_PURCHASE_JSON_BASE64, 'base64').toString('utf-8');
+      const config = JSON.parse(decoded);
+      if (!config.enabled) {
+        return null;
+      }
+      return config;
+    } catch (error) {
+      console.error('⚠️  Error parsing AUTO_PURCHASE_JSON_BASE64 environment variable:', error.message);
+      return null;
+    }
+  }
+
+  // Try plain JSON environment variable (for Railway deployment)
   if (process.env.AUTO_PURCHASE_JSON) {
     try {
       const config = JSON.parse(process.env.AUTO_PURCHASE_JSON);

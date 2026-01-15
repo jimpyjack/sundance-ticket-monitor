@@ -18,7 +18,18 @@ const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
 // Load cookies from file or environment variable
 function loadCookies() {
-  // Try environment variable first (for Railway deployment)
+  // Try base64-encoded environment variable first (for cloud deployment)
+  if (process.env.COOKIES_JSON_BASE64) {
+    try {
+      const decoded = Buffer.from(process.env.COOKIES_JSON_BASE64, 'base64').toString('utf-8');
+      return JSON.parse(decoded);
+    } catch (error) {
+      console.error('❌ Error parsing COOKIES_JSON_BASE64 environment variable:', error.message);
+      process.exit(1);
+    }
+  }
+
+  // Try plain JSON environment variable (for Railway deployment)
   if (process.env.COOKIES_JSON) {
     try {
       return JSON.parse(process.env.COOKIES_JSON);
