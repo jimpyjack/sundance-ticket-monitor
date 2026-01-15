@@ -7,6 +7,7 @@
     "check": "bun run src/check-once.js",
     "test": "bun run src/test-login.js",
     "test-detect": "bun run src/test-detection.js",
+    "test-checkout": "bun run src/test-checkout.js",
     "generate:auto-purchase": "bun run src/generate-auto-purchase.js"
   },
   "dependencies": {

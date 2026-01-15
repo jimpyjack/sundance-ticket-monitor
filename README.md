@@ -192,6 +192,7 @@ bun run monitor      # Start continuous monitoring
 bun run check        # One-time status check
 bun run test         # Test cookie authentication
 bun run test-detect  # Debug page detection
+bun run test-checkout "Film Title"  # Run checkout flow in a visible browser
 ```
 
 ## How It Works

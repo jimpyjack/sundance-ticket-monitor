@@ -436,7 +436,7 @@ export async function attemptPurchase(page, filmTitle, config, sendNotification)
     console.log('   Step 2+: Navigating checkout flow...');
     const checkoutResult = await runCheckoutFlow(purchasePage, settings, { debug, screenshot });
 
-    if (orderResult.openedNewPage && purchasePage !== page) {
+    if (orderResult.openedNewPage && purchasePage !== page && settings.keepCheckoutOpen !== true) {
       await purchasePage.close().catch(() => {});
     }
 
