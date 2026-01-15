@@ -30,8 +30,23 @@ function getPaymentConfig(settings = {}) {
   };
 }
 
-// Load auto-purchase configuration
+// Load auto-purchase configuration from file or environment variable
 export function loadAutoPurchaseConfig() {
+  // Try environment variable first (for Railway deployment)
+  if (process.env.AUTO_PURCHASE_JSON) {
+    try {
+      const config = JSON.parse(process.env.AUTO_PURCHASE_JSON);
+      if (!config.enabled) {
+        return null;
+      }
+      return config;
+    } catch (error) {
+      console.error('⚠️  Error parsing AUTO_PURCHASE_JSON environment variable:', error.message);
+      return null;
+    }
+  }
+
+  // Fall back to file (for local development)
   if (!existsSync(AUTO_PURCHASE_PATH)) {
     return null;
   }

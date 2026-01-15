@@ -16,10 +16,21 @@ const RESEND_TO_EMAIL = process.env.RESEND_TO_EMAIL;
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
-// Load cookies from file
+// Load cookies from file or environment variable
 function loadCookies() {
+  // Try environment variable first (for Railway deployment)
+  if (process.env.COOKIES_JSON) {
+    try {
+      return JSON.parse(process.env.COOKIES_JSON);
+    } catch (error) {
+      console.error('❌ Error parsing COOKIES_JSON environment variable:', error.message);
+      process.exit(1);
+    }
+  }
+
+  // Fall back to file (for local development)
   if (!existsSync(COOKIES_PATH)) {
-    console.error('❌ cookies.json not found! Please run the setup instructions first.');
+    console.error('❌ cookies.json not found and COOKIES_JSON env var not set! Please run the setup instructions first.');
     process.exit(1);
   }
 
