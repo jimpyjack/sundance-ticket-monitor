@@ -48,23 +48,33 @@ export function loadAutoPurchaseConfig() {
   }
 }
 
-// Get auto-purchase settings for a specific film
-export function getFilmSettings(filmTitle, config) {
+// Get auto-purchase settings for a specific film screening
+export function getFilmSettings(filmTitle, screeningTime, config) {
   if (!config || !config.films) return null;
 
-  const normalized = normalizeTitle(filmTitle);
-  const exact = config.films.find(f => normalizeTitle(f.title) === normalized);
-  if (exact) return exact;
+  const normalizedTitle = normalizeTitle(filmTitle);
+  const normalizedTime = normalizeTitle(screeningTime || '');
 
-  return config.films.find(f =>
-    normalized.includes(normalizeTitle(f.title)) ||
-    normalizeTitle(f.title).includes(normalized)
-  ) || null;
+  // First, try exact match on both title and screening time
+  const exactMatch = config.films.find(f =>
+    normalizeTitle(f.title) === normalizedTitle &&
+    normalizeTitle(f.screeningTime || '') === normalizedTime
+  );
+  if (exactMatch) return exactMatch;
+
+  // Fallback: match on title only if no screening time specified in config
+  // (for backwards compatibility with old config files that don't have screeningTime)
+  const titleOnlyMatch = config.films.find(f =>
+    !f.screeningTime && normalizeTitle(f.title) === normalizedTitle
+  );
+  if (titleOnlyMatch) return titleOnlyMatch;
+
+  return null;
 }
 
-// Check if a film should be auto-purchased
-export function shouldAutoPurchase(filmTitle, config) {
-  const film = getFilmSettings(filmTitle, config);
+// Check if a film screening should be auto-purchased
+export function shouldAutoPurchase(filmTitle, screeningTime, config) {
+  const film = getFilmSettings(filmTitle, screeningTime, config);
   return film?.autoPurchase === true;
 }
 
@@ -205,19 +215,32 @@ async function checkTermsCheckboxes(page) {
 async function setTicketQuantity(page, quantity) {
   if (!quantity || quantity <= 1) return false;
 
-  const updated = await page.evaluate((desired) => {
+  const result = await page.evaluate((desired) => {
     const selects = Array.from(document.querySelectorAll('select'));
     for (const select of selects) {
       const id = (select.id || '').toLowerCase();
       const name = (select.name || '').toLowerCase();
       const className = (select.className || '').toLowerCase();
       if (id.includes('quantity') || name.includes('quantity') || className.includes('quantity')) {
-        const option = Array.from(select.options).find(o => o.value === String(desired) || o.textContent.trim() === String(desired));
-        if (option) {
-          select.value = option.value;
-          select.dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
+        // Try desired quantity first
+        let option = Array.from(select.options).find(o => o.value === String(desired) || o.textContent.trim() === String(desired));
+
+        // If desired quantity isn't available, try progressively lower quantities down to 1
+        if (!option) {
+          for (let qty = desired - 1; qty >= 1; qty--) {
+            option = Array.from(select.options).find(o => o.value === String(qty) || o.textContent.trim() === String(qty));
+            if (option) {
+              select.value = option.value;
+              select.dispatchEvent(new Event('change', { bubbles: true }));
+              return { success: true, quantity: qty };
+            }
+          }
+          return { success: false };
         }
+
+        select.value = option.value;
+        select.dispatchEvent(new Event('change', { bubbles: true }));
+        return { success: true, quantity: desired };
       }
     }
 
@@ -228,22 +251,34 @@ async function setTicketQuantity(page, quantity) {
       if (!id && !name && inputs.length > 1) continue;
       if (id.includes('quantity') || name.includes('quantity') || inputs.length === 1) {
         if (!input.disabled) {
-          input.value = String(desired);
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          input.dispatchEvent(new Event('change', { bubbles: true }));
-          return true;
+          // Try desired quantity first
+          const max = input.max ? parseInt(input.max) : desired;
+          const actualQty = Math.min(desired, max);
+
+          // If can't set desired, try progressively lower down to 1
+          for (let qty = actualQty; qty >= 1; qty--) {
+            input.value = String(qty);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+            return { success: true, quantity: qty };
+          }
         }
       }
     }
 
-    return false;
+    return { success: false };
   }, quantity);
 
-  if (updated) {
-    console.log(`   ✓ Set ticket quantity to ${quantity}`);
+  if (result.success) {
+    if (result.quantity < quantity) {
+      console.log(`   ⚠️  Only ${result.quantity} ticket(s) available (requested ${quantity})`);
+      console.log(`   ✓ Set ticket quantity to ${result.quantity}`);
+    } else {
+      console.log(`   ✓ Set ticket quantity to ${result.quantity}`);
+    }
   }
 
-  return updated;
+  return result.success;
 }
 
 async function selectSavedPayment(page) {
@@ -516,19 +551,22 @@ async function clickOrderTicketsButton(page, filmTitle) {
   return { success: true, purchasePage, openedNewPage: !!popup };
 }
 
-// Attempt to purchase tickets for a film
-export async function attemptPurchase(page, filmTitle, config, sendNotification) {
+// Attempt to purchase tickets for a specific film screening
+export async function attemptPurchase(page, filmTitle, screeningTime, config, sendNotification) {
   console.log(`\n🛒 AUTO-PURCHASE: Starting purchase flow for "${filmTitle}"`);
+  if (screeningTime) {
+    console.log(`   Screening: ${screeningTime}`);
+  }
 
   const settings = config.settings || {};
-  const filmSettings = getFilmSettings(filmTitle, config);
+  const filmSettings = getFilmSettings(filmTitle, screeningTime, config);
 
   if (!filmSettings) {
-    return { success: false, reason: 'Film not found in auto-purchase list' };
+    return { success: false, reason: 'Film screening not found in auto-purchase list' };
   }
 
   if (filmSettings.autoPurchase !== true) {
-    return { success: false, reason: 'Auto-purchase disabled for this film' };
+    return { success: false, reason: 'Auto-purchase disabled for this screening' };
   }
 
   const runId = Date.now();

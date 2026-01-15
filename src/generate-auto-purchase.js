@@ -14,18 +14,7 @@ async function loadCookies() {
   return JSON.parse(cookiesJson);
 }
 
-function uniqueTitles(items) {
-  const seen = new Set();
-  const deduped = [];
-  for (const title of items) {
-    const key = title.toLowerCase();
-    if (!seen.has(key)) {
-      seen.add(key);
-      deduped.push(title);
-    }
-  }
-  return deduped;
-}
+// No longer needed - we want to keep all screenings, even duplicates of the same film
 
 async function scrollSchedule(page) {
   let lastHeight = await page.evaluate(() => document.body.scrollHeight);
@@ -41,7 +30,7 @@ async function scrollSchedule(page) {
   }
 }
 
-async function scrapeScheduleTitles(page) {
+async function scrapeScheduleScreenings(page) {
   // Load main page first to establish session (mirrors monitor.js)
   await page.goto('https://festival.sundance.org/', { waitUntil: 'domcontentloaded', timeout: 60000 });
   await page.waitForTimeout(3000);
@@ -60,16 +49,22 @@ async function scrapeScheduleTitles(page) {
   // Try to force-load all rows (handles virtualized tables)
   await scrollSchedule(page);
 
-  // Extract titles using the same selector the monitor relies on
-  const titles = await page.evaluate(() => {
+  // Extract titles AND screening times (matches monitor.js extraction logic)
+  const screenings = await page.evaluate(() => {
     const out = [];
     const descs = Array.from(document.querySelectorAll('.sd_schedule_film_desc'));
     descs.forEach((desc) => {
       const h3 = desc.querySelector('h3');
-      if (h3) {
-        const title = h3.textContent.trim();
-        if (title && title.length > 1) out.push(title);
-      }
+      if (!h3) return;
+
+      const title = h3.textContent.trim();
+      if (!title || title.length < 2) return;
+
+      // Get screening time from date element (same as monitor.js)
+      const dateElement = desc.querySelector('.sd_start_end_date');
+      const screeningTime = dateElement ? dateElement.textContent.trim().replace(/\s+/g, ' ') : '';
+
+      out.push({ title, screeningTime });
     });
     return out;
   });
@@ -77,7 +72,7 @@ async function scrapeScheduleTitles(page) {
   const duration = Math.round((Date.now() - start) / 1000);
   console.log(`   ⏱️  Schedule load + scrape took ${duration}s`);
 
-  return uniqueTitles(titles);
+  return screenings;
 }
 
 async function main() {
@@ -94,16 +89,18 @@ async function main() {
   await context.addCookies(cookies);
   const page = await context.newPage();
 
-  const titles = await scrapeScheduleTitles(page);
+  const screenings = await scrapeScheduleScreenings(page);
   await browser.close();
 
-  if (titles.length === 0) {
-    console.log('❌ No films found on your schedule. Add films to your schedule first.');
+  if (screenings.length === 0) {
+    console.log('❌ No screenings found on your schedule. Add films to your schedule first.');
     return;
   }
 
-  const films = titles.map((title) => ({
-    title,
+  // Keep each screening separate - don't deduplicate
+  const films = screenings.map((screening) => ({
+    title: screening.title,
+    screeningTime: screening.screeningTime,
     autoPurchase: false
   }));
 
@@ -118,8 +115,9 @@ async function main() {
   };
 
   writeFileSync(OUTPUT_PATH, JSON.stringify(config, null, 2));
-  console.log(`✅ auto-purchase.json created with ${films.length} film(s).`);
-  console.log('   Set autoPurchase: true for the titles you want to buy automatically.');
+  console.log(`✅ auto-purchase.json created with ${films.length} screening(s).`);
+  console.log('   Each screening is listed separately by time.');
+  console.log('   Set autoPurchase: true for the specific screenings you want to buy automatically.');
 }
 
 main().catch((err) => {

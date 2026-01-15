@@ -198,7 +198,11 @@ async function sendEmailNotification(changes) {
     return `${type}\n📽️  ${c.title}\n⏰ ${c.screeningTime}\n🔗 ${c.url}\n`;
   }).join('\n');
 
-  const subject = `🎬 Sundance Tickets Available! (${changes.length} film${changes.length > 1 ? 's' : ''})`;
+  // Create subject line with film names
+  const filmNames = changes.map(c => c.title).join(', ');
+  const subject = changes.length === 1
+    ? `🎬 Sundance: ${filmNames} - Tickets Available!`
+    : `🎬 Sundance: ${changes.length} Films Available (${filmNames})`;
 
   const html = `
     <h2>🎬 Sundance Ticket Alert!</h2>
@@ -338,12 +342,16 @@ async function monitorSchedule() {
         if (autoPurchaseConfig) {
           for (const change of changes) {
             if ((change.type === 'NOW_AVAILABLE' || change.type === 'NEW_AVAILABLE') &&
-                shouldAutoPurchase(change.title, autoPurchaseConfig)) {
+                shouldAutoPurchase(change.title, change.screeningTime, autoPurchaseConfig)) {
               console.log(`\n🤖 Auto-purchase triggered for: ${change.title}`);
+              if (change.screeningTime) {
+                console.log(`   Screening: ${change.screeningTime}`);
+              }
 
               const result = await attemptPurchase(
                 page,
                 change.title,
+                change.screeningTime,
                 autoPurchaseConfig,
                 sendEmailNotification
               );
